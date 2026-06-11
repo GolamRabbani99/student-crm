@@ -1,17 +1,19 @@
 // Demo mode backend: a localStorage-backed replica of the real API so the CRM
 // can run fully in the browser on GitHub Pages. Each visitor gets their own data.
 
-const DB_KEY = 'crm_demo_db_v1';
+const DB_KEY = 'crm_demo_db_v2';
 
 interface DbUser { id: number; name: string; email: string; password: string; role: string; created_at: string }
 interface DbUniversity { id: number; name: string; country: string | null; city: string | null; created_at: string }
 interface DbCampus { id: number; university_id: number; name: string }
 interface DbIntake { id: number; university_id: number; label: string }
+interface DbCourse { id: number; university_id: number; name: string }
 interface DbStatus { id: number; name: string; color: string; sort_order: number }
 interface DbStudent {
   id: number; first_name: string; last_name: string; email: string | null; phone: string | null;
   country: string | null; program: string | null; university_id: number | null; campus_id: number | null;
-  intake_id: number | null; status_id: number | null; assigned_to: number | null; created_at: string; updated_at: string;
+  intake_id: number | null; course_id: number | null; status_id: number | null; assigned_to: number | null;
+  created_at: string; updated_at: string;
 }
 interface DbActivity { id: number; student_id: number; user_id: number | null; type: string; content: string; created_at: string }
 
@@ -20,6 +22,7 @@ interface Db {
   universities: DbUniversity[];
   campuses: DbCampus[];
   intakes: DbIntake[];
+  courses: DbCourse[];
   statuses: DbStatus[];
   students: DbStudent[];
   activities: DbActivity[];
@@ -31,7 +34,7 @@ const daysAgo = (d: number) => new Date(Date.now() - d * 24 * 60 * 60 * 1000).to
 
 function seed(): Db {
   const db: Db = {
-    users: [], universities: [], campuses: [], intakes: [], statuses: [], students: [], activities: [], nextId: 1,
+    users: [], universities: [], campuses: [], intakes: [], courses: [], statuses: [], students: [], activities: [], nextId: 1,
   };
   const id = () => db.nextId++;
 
@@ -51,18 +54,20 @@ function seed(): Db {
   });
 
   const uniDefs = [
-    { name: 'University of Toronto', country: 'Canada', city: 'Toronto', campuses: ['St. George Campus', 'Mississauga Campus', 'Scarborough Campus'], intakes: ['Fall 2026', 'Winter 2027'] },
-    { name: 'University of Melbourne', country: 'Australia', city: 'Melbourne', campuses: ['Parkville Campus', 'Southbank Campus'], intakes: ['July 2026', 'February 2027'] },
-    { name: 'University of Manchester', country: 'United Kingdom', city: 'Manchester', campuses: ['Main Campus'], intakes: ['September 2026', 'January 2027'] },
-    { name: 'Arizona State University', country: 'United States', city: 'Tempe', campuses: ['Tempe Campus', 'Downtown Phoenix Campus', 'Online'], intakes: ['Fall 2026', 'Spring 2027'] },
+    { name: 'University of Toronto', country: 'Canada', city: 'Toronto', campuses: ['St. George Campus', 'Mississauga Campus', 'Scarborough Campus'], intakes: ['Fall 2026', 'Winter 2027'], courses: ['MSc Computer Science', 'MSc Artificial Intelligence', 'MBA', 'LLM International Law', 'BSc Economics'] },
+    { name: 'University of Melbourne', country: 'Australia', city: 'Melbourne', campuses: ['Parkville Campus', 'Southbank Campus'], intakes: ['July 2026', 'February 2027'], courses: ['BBA', 'MEng Civil Engineering', 'MSc Finance', 'BSc Biomedicine'] },
+    { name: 'University of Manchester', country: 'United Kingdom', city: 'Manchester', campuses: ['Main Campus'], intakes: ['September 2026', 'January 2027'], courses: ['MSc Data Science', 'MSc Public Health', 'PhD Economics', 'LLB Law'] },
+    { name: 'Arizona State University', country: 'United States', city: 'Tempe', campuses: ['Tempe Campus', 'Downtown Phoenix Campus', 'Online'], intakes: ['Fall 2026', 'Spring 2027'], courses: ['BSc Computer Engineering', 'BSc Nursing', 'MSc Software Engineering', 'MBA'] },
   ];
-  const uniData: Array<{ id: number; campusIds: number[]; intakeIds: number[] }> = [];
+  const uniData: Array<{ id: number; campusIds: number[]; intakeIds: number[]; courseIds: Record<string, number> }> = [];
   for (const u of uniDefs) {
     const uid = id();
     db.universities.push({ id: uid, name: u.name, country: u.country, city: u.city, created_at: now() });
     const campusIds = u.campuses.map((name) => { const cid = id(); db.campuses.push({ id: cid, university_id: uid, name }); return cid; });
     const intakeIds = u.intakes.map((label) => { const iid = id(); db.intakes.push({ id: iid, university_id: uid, label }); return iid; });
-    uniData.push({ id: uid, campusIds, intakeIds });
+    const courseIds: Record<string, number> = {};
+    u.courses.forEach((name) => { const cid = id(); db.courses.push({ id: cid, university_id: uid, name }); courseIds[name] = cid; });
+    uniData.push({ id: uid, campusIds, intakeIds, courseIds });
   }
 
   const sample: Array<[string, string, string, string, string, number, string, number, number]> = [
@@ -87,6 +92,7 @@ function seed(): Db {
     db.students.push({
       id: sid, first_name: first, last_name: last, email, phone, country: 'Bangladesh', program,
       university_id: u.id, campus_id: u.campusIds[0], intake_id: u.intakeIds[0],
+      course_id: u.courseIds[program] ?? null,
       status_id: statusIds[status], assigned_to: assigned, created_at: created, updated_at: created,
     });
     db.activities.push({ id: id(), student_id: sid, user_id: assigned, type: 'created', content: `Student profile created for ${first} ${last}`, created_at: created });
@@ -131,6 +137,7 @@ function joinStudent(db: Db, s: DbStudent) {
   const uni = db.universities.find((u) => u.id === s.university_id);
   const campus = db.campuses.find((c) => c.id === s.campus_id);
   const intake = db.intakes.find((i) => i.id === s.intake_id);
+  const course = db.courses.find((c) => c.id === s.course_id);
   const status = db.statuses.find((st) => st.id === s.status_id);
   const assignee = db.users.find((u) => u.id === s.assigned_to);
   return {
@@ -138,6 +145,7 @@ function joinStudent(db: Db, s: DbStudent) {
     university_name: uni?.name ?? null,
     campus_name: campus?.name ?? null,
     intake_label: intake?.label ?? null,
+    course_name: course?.name ?? null,
     status_name: status?.name ?? null,
     status_color: status?.color ?? null,
     assigned_name: assignee?.name ?? null,
@@ -172,9 +180,18 @@ function studentValues(db: Db, body: any) {
     university_id: num(body.university_id),
     campus_id: num(body.campus_id),
     intake_id: num(body.intake_id),
+    course_id: num(body.course_id),
     status_id: num(body.status_id),
     assigned_to: num(body.assigned_to),
   };
+}
+
+// Keep the free-text program field in sync with the selected course.
+function syncProgramWithCourse(db: Db, v: { course_id: number | null; program: string | null }) {
+  if (v.course_id !== null) {
+    const course = db.courses.find((c) => c.id === v.course_id);
+    if (course) v.program = course.name;
+  }
 }
 
 export async function demoApi<T = any>(path: string, options: RequestInit = {}): Promise<T> {
@@ -258,6 +275,7 @@ function handle(db: Db, method: string, parts: string[], query: URLSearchParams,
             student_count: db.students.filter((s) => s.university_id === u.id).length,
             campuses: db.campuses.filter((c) => c.university_id === u.id),
             intakes: db.intakes.filter((i) => i.university_id === u.id),
+            courses: db.courses.filter((c) => c.university_id === u.id),
           })),
       };
     }
@@ -268,6 +286,7 @@ function handle(db: Db, method: string, parts: string[], query: URLSearchParams,
       db.universities.push({ id: newId, name: body.name.trim(), country: body.country?.trim() || null, city: body.city?.trim() || null, created_at: now() });
       cleanList(body.campuses).forEach((name) => db.campuses.push({ id: db.nextId++, university_id: newId, name }));
       cleanList(body.intakes).forEach((label) => db.intakes.push({ id: db.nextId++, university_id: newId, label }));
+      cleanList(body.courses).forEach((name) => db.courses.push({ id: db.nextId++, university_id: newId, name }));
       return { id: newId };
     }
     const target = db.universities.find((u) => u.id === Number(second));
@@ -297,14 +316,25 @@ function handle(db: Db, method: string, parts: string[], query: URLSearchParams,
       const existingIntakeLabels = db.intakes.filter((i) => i.university_id === target.id).map((i) => i.label);
       newIntakes.filter((l) => !existingIntakeLabels.includes(l))
         .forEach((label) => db.intakes.push({ id: db.nextId++, university_id: target.id, label }));
+      const newCourses = cleanList(body.courses);
+      for (const old of db.courses.filter((c) => c.university_id === target.id)) {
+        if (!newCourses.includes(old.name)) {
+          db.students.forEach((s) => { if (s.course_id === old.id) s.course_id = null; });
+          db.courses = db.courses.filter((c) => c.id !== old.id);
+        }
+      }
+      const existingCourseNames = db.courses.filter((c) => c.university_id === target.id).map((c) => c.name);
+      newCourses.filter((n) => !existingCourseNames.includes(n))
+        .forEach((name) => db.courses.push({ id: db.nextId++, university_id: target.id, name }));
       return { ok: true };
     }
     if (method === 'DELETE') {
       db.students.forEach((s) => {
-        if (s.university_id === target.id) { s.university_id = null; s.campus_id = null; s.intake_id = null; }
+        if (s.university_id === target.id) { s.university_id = null; s.campus_id = null; s.intake_id = null; s.course_id = null; }
       });
       db.campuses = db.campuses.filter((c) => c.university_id !== target.id);
       db.intakes = db.intakes.filter((i) => i.university_id !== target.id);
+      db.courses = db.courses.filter((c) => c.university_id !== target.id);
       db.universities = db.universities.filter((u) => u.id !== target.id);
       return { ok: true };
     }
@@ -364,6 +394,7 @@ function handle(db: Db, method: string, parts: string[], query: URLSearchParams,
     }
     if (!second && method === 'POST') {
       const v = studentValues(db, body);
+      syncProgramWithCourse(db, v);
       if (v.status_id === null) {
         const first = [...db.statuses].sort((a, b) => a.sort_order - b.sort_order)[0];
         v.status_id = first?.id ?? null;
@@ -405,6 +436,7 @@ function handle(db: Db, method: string, parts: string[], query: URLSearchParams,
     }
     if (!third && method === 'PUT') {
       const v = studentValues(db, body);
+      syncProgramWithCourse(db, v);
       const oldStatus = target.status_id;
       Object.assign(target, v, { status_id: v.status_id ?? oldStatus, updated_at: now() });
       if (v.status_id !== null && v.status_id !== oldStatus) {

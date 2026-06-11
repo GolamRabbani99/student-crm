@@ -11,6 +11,7 @@ const BASE_SELECT = `
     un.name AS university_name,
     c.name AS campus_name,
     i.label AS intake_label,
+    co.name AS course_name,
     st.name AS status_name,
     st.color AS status_color,
     a.name AS assigned_name
@@ -18,6 +19,7 @@ const BASE_SELECT = `
   LEFT JOIN universities un ON un.id = s.university_id
   LEFT JOIN campuses c ON c.id = s.campus_id
   LEFT JOIN intakes i ON i.id = s.intake_id
+  LEFT JOIN courses co ON co.id = s.course_id
   LEFT JOIN statuses st ON st.id = s.status_id
   LEFT JOIN users a ON a.id = s.assigned_to
 `;
@@ -75,16 +77,26 @@ function studentPayload(body: any) {
       university_id: num(body.university_id),
       campus_id: num(body.campus_id),
       intake_id: num(body.intake_id),
+      course_id: num(body.course_id),
       status_id: num(body.status_id),
       assigned_to: num(body.assigned_to),
     },
   };
 }
 
+// Keep the free-text program field in sync with the selected course.
+function syncProgramWithCourse(v: { course_id: number | null; program: string | null }) {
+  if (v.course_id !== null) {
+    const course = db.prepare('SELECT name FROM courses WHERE id = ?').get(v.course_id) as { name: string } | undefined;
+    if (course) v.program = course.name;
+  }
+}
+
 router.post('/', (req, res) => {
   const parsed = studentPayload(req.body);
   if ('error' in parsed) return res.status(400).json({ error: parsed.error });
   const v = parsed.values!;
+  syncProgramWithCourse(v);
 
   if (v.status_id === null) {
     const first = db.prepare('SELECT id FROM statuses ORDER BY sort_order, id LIMIT 1').get() as { id: number } | undefined;
@@ -94,11 +106,11 @@ router.post('/', (req, res) => {
   const result = db
     .prepare(`
       INSERT INTO students (first_name, last_name, email, phone, country, program,
-        university_id, campus_id, intake_id, status_id, assigned_to, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        university_id, campus_id, intake_id, course_id, status_id, assigned_to, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(v.first_name, v.last_name, v.email, v.phone, v.country, v.program,
-      v.university_id, v.campus_id, v.intake_id, v.status_id, v.assigned_to, ts, ts);
+      v.university_id, v.campus_id, v.intake_id, v.course_id, v.status_id, v.assigned_to, ts, ts);
   const studentId = Number(result.lastInsertRowid);
   db.prepare('INSERT INTO activities (student_id, user_id, type, content, created_at) VALUES (?, ?, ?, ?, ?)')
     .run(studentId, req.user!.id, 'created', `Student profile created for ${v.first_name} ${v.last_name}`, ts);
@@ -113,14 +125,15 @@ router.put('/:id', (req, res) => {
   const parsed = studentPayload(req.body);
   if ('error' in parsed) return res.status(400).json({ error: parsed.error });
   const v = parsed.values!;
+  syncProgramWithCourse(v);
   const ts = new Date().toISOString();
 
   db.prepare(`
     UPDATE students SET first_name = ?, last_name = ?, email = ?, phone = ?, country = ?, program = ?,
-      university_id = ?, campus_id = ?, intake_id = ?, status_id = ?, assigned_to = ?, updated_at = ?
+      university_id = ?, campus_id = ?, intake_id = ?, course_id = ?, status_id = ?, assigned_to = ?, updated_at = ?
     WHERE id = ?
   `).run(v.first_name, v.last_name, v.email, v.phone, v.country, v.program,
-    v.university_id, v.campus_id, v.intake_id, v.status_id ?? existing.status_id, v.assigned_to, ts, id);
+    v.university_id, v.campus_id, v.intake_id, v.course_id, v.status_id ?? existing.status_id, v.assigned_to, ts, id);
 
   if (v.status_id !== null && v.status_id !== existing.status_id) {
     const oldName = (db.prepare('SELECT name FROM statuses WHERE id = ?').get(existing.status_id) as any)?.name ?? 'None';

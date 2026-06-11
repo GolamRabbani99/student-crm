@@ -151,7 +151,7 @@ export default function Students() {
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50">
               <tr>
-                {['Student', 'University & Program', 'Intake', 'Status', 'Counselor', 'Updated', ''].map((h) => (
+                {['Student', 'University & Course', 'Campus & Intake', 'Status', 'Counselor', 'Updated', ''].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     {h}
                   </th>
@@ -172,9 +172,12 @@ export default function Students() {
                   </td>
                   <td className="px-4 py-3">
                     <p className="text-sm text-slate-700">{s.university_name ?? '—'}</p>
-                    <p className="text-xs text-slate-500">{s.program ?? ''}</p>
+                    <p className="text-xs text-slate-500">{s.course_name ?? s.program ?? ''}</p>
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">{s.intake_label ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    <p className="text-sm text-slate-600">{s.campus_name ?? '—'}</p>
+                    <p className="text-xs text-slate-500">{s.intake_label ?? ''}</p>
+                  </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <StatusQuickSelect
                       student={s}
@@ -279,6 +282,7 @@ function StudentForm({
     university_id: student?.university_id ? String(student.university_id) : '',
     campus_id: student?.campus_id ? String(student.campus_id) : '',
     intake_id: student?.intake_id ? String(student.intake_id) : '',
+    course_id: student?.course_id ? String(student.course_id) : '',
     status_id: student?.status_id ? String(student.status_id) : (lists.statuses[0] ? String(lists.statuses[0].id) : ''),
     assigned_to: student?.assigned_to ? String(student.assigned_to) : '',
   });
@@ -296,6 +300,7 @@ function StudentForm({
       if (field === 'university_id') {
         next.campus_id = '';
         next.intake_id = '';
+        next.course_id = '';
       }
       return next;
     });
@@ -311,6 +316,7 @@ function StudentForm({
         university_id: form.university_id || null,
         campus_id: form.campus_id || null,
         intake_id: form.intake_id || null,
+        course_id: form.course_id || null,
         status_id: form.status_id || null,
         assigned_to: form.assigned_to || null,
       };
@@ -352,14 +358,17 @@ function StudentForm({
             <input className={inputClass} value={form.country} onChange={(e) => set('country', e.target.value)} />
           </div>
           <div>
-            <label className={labelClass}>Program / Course</label>
-            <input className={inputClass} placeholder="e.g. MSc Computer Science" value={form.program} onChange={(e) => set('program', e.target.value)} />
-          </div>
-          <div>
             <label className={labelClass}>University</label>
             <select className={inputClass} value={form.university_id} onChange={(e) => set('university_id', e.target.value)}>
               <option value="">Not selected</option>
               {lists.universities.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Course</label>
+            <select className={inputClass} value={form.course_id} onChange={(e) => set('course_id', e.target.value)} disabled={!selectedUni}>
+              <option value="">Not selected</option>
+              {selectedUni?.courses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div>
@@ -472,7 +481,7 @@ function StudentDrawer({
                     <h2 className="text-lg font-semibold text-slate-900">
                       {student.first_name} {student.last_name}
                     </h2>
-                    <p className="text-sm text-slate-500">{student.program ?? 'No program set'}</p>
+                    <p className="text-sm text-slate-500">{student.course_name ?? student.program ?? 'No course set'}</p>
                     <div className="mt-1.5">
                       <StatusBadge name={student.status_name} color={student.status_color} />
                     </div>
@@ -500,6 +509,7 @@ function StudentDrawer({
                   <Detail label="Phone" value={student.phone} />
                   <Detail label="Country" value={student.country} />
                   <Detail label="University" value={student.university_name} />
+                  <Detail label="Course" value={student.course_name ?? student.program} />
                   <Detail label="Campus" value={student.campus_name} />
                   <Detail label="Intake" value={student.intake_label} />
                   <Detail label="Counselor" value={student.assigned_name ?? 'Unassigned'} />

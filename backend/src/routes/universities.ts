@@ -16,11 +16,13 @@ router.get('/', (_req, res) => {
     .all() as any[];
   const campuses = db.prepare('SELECT * FROM campuses ORDER BY name').all() as any[];
   const intakes = db.prepare('SELECT * FROM intakes ORDER BY label').all() as any[];
+  const courses = db.prepare('SELECT * FROM courses ORDER BY name').all() as any[];
   res.json({
     universities: universities.map((u) => ({
       ...u,
       campuses: campuses.filter((c) => c.university_id === u.id),
       intakes: intakes.filter((i) => i.university_id === u.id),
+      courses: courses.filter((c) => c.university_id === u.id),
     })),
   });
 });
@@ -31,7 +33,7 @@ function cleanList(value: unknown): string[] {
 }
 
 router.post('/', requireAdmin, (req, res) => {
-  const { name, country, city, campuses, intakes } = req.body ?? {};
+  const { name, country, city, campuses, intakes, courses } = req.body ?? {};
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'University name is required' });
   }
@@ -41,8 +43,10 @@ router.post('/', requireAdmin, (req, res) => {
   const uniId = Number(result.lastInsertRowid);
   const insertCampus = db.prepare('INSERT INTO campuses (university_id, name) VALUES (?, ?)');
   const insertIntake = db.prepare('INSERT INTO intakes (university_id, label) VALUES (?, ?)');
+  const insertCourse = db.prepare('INSERT INTO courses (university_id, name) VALUES (?, ?)');
   cleanList(campuses).forEach((c) => insertCampus.run(uniId, c));
   cleanList(intakes).forEach((i) => insertIntake.run(uniId, i));
+  cleanList(courses).forEach((c) => insertCourse.run(uniId, c));
   res.status(201).json({ id: uniId });
 });
 
@@ -51,7 +55,7 @@ router.put('/:id', requireAdmin, (req, res) => {
   const existing = db.prepare('SELECT id FROM universities WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'University not found' });
 
-  const { name, country, city, campuses, intakes } = req.body ?? {};
+  const { name, country, city, campuses, intakes, courses } = req.body ?? {};
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'University name is required' });
   }
@@ -85,6 +89,19 @@ router.put('/:id', requireAdmin, (req, res) => {
     .filter((i) => !oldIntakeLabels.includes(i))
     .forEach((i) => db.prepare('INSERT INTO intakes (university_id, label) VALUES (?, ?)').run(id, i));
 
+  const newCourses = cleanList(courses);
+  const oldCourses = db.prepare('SELECT id, name FROM courses WHERE university_id = ?').all(id) as Array<{ id: number; name: string }>;
+  for (const old of oldCourses) {
+    if (!newCourses.includes(old.name)) {
+      db.prepare('UPDATE students SET course_id = NULL WHERE course_id = ?').run(old.id);
+      db.prepare('DELETE FROM courses WHERE id = ?').run(old.id);
+    }
+  }
+  const oldCourseNames = oldCourses.map((c) => c.name);
+  newCourses
+    .filter((c) => !oldCourseNames.includes(c))
+    .forEach((c) => db.prepare('INSERT INTO courses (university_id, name) VALUES (?, ?)').run(id, c));
+
   res.json({ ok: true });
 });
 
@@ -92,7 +109,7 @@ router.delete('/:id', requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   const existing = db.prepare('SELECT id FROM universities WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'University not found' });
-  db.prepare('UPDATE students SET university_id = NULL, campus_id = NULL, intake_id = NULL WHERE university_id = ?').run(id);
+  db.prepare('UPDATE students SET university_id = NULL, campus_id = NULL, intake_id = NULL, course_id = NULL WHERE university_id = ?').run(id);
   db.prepare('DELETE FROM universities WHERE id = ?').run(id);
   res.json({ ok: true });
 });

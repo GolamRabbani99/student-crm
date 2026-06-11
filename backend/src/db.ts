@@ -42,6 +42,12 @@ db.exec(`
     label TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS courses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    university_id INTEGER NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
+    name TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS statuses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
@@ -76,6 +82,13 @@ db.exec(`
   );
 `);
 
+// Migration for databases created before the courses feature existed.
+try {
+  db.exec('ALTER TABLE students ADD COLUMN course_id INTEGER REFERENCES courses(id) ON DELETE SET NULL');
+} catch {
+  // Column already exists.
+}
+
 function now(): string {
   return new Date().toISOString();
 }
@@ -83,6 +96,35 @@ function now(): string {
 function daysAgo(days: number): string {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 }
+
+const SAMPLE_UNIVERSITIES: Array<{
+  name: string; country: string; city: string; campuses: string[]; intakes: string[]; courses: string[];
+}> = [
+  {
+    name: 'University of Toronto', country: 'Canada', city: 'Toronto',
+    campuses: ['St. George Campus', 'Mississauga Campus', 'Scarborough Campus'],
+    intakes: ['Fall 2026', 'Winter 2027'],
+    courses: ['MSc Computer Science', 'MSc Artificial Intelligence', 'MBA', 'LLM International Law', 'BSc Economics'],
+  },
+  {
+    name: 'University of Melbourne', country: 'Australia', city: 'Melbourne',
+    campuses: ['Parkville Campus', 'Southbank Campus'],
+    intakes: ['July 2026', 'February 2027'],
+    courses: ['BBA', 'MEng Civil Engineering', 'MSc Finance', 'BSc Biomedicine'],
+  },
+  {
+    name: 'University of Manchester', country: 'United Kingdom', city: 'Manchester',
+    campuses: ['Main Campus'],
+    intakes: ['September 2026', 'January 2027'],
+    courses: ['MSc Data Science', 'MSc Public Health', 'PhD Economics', 'LLB Law'],
+  },
+  {
+    name: 'Arizona State University', country: 'United States', city: 'Tempe',
+    campuses: ['Tempe Campus', 'Downtown Phoenix Campus', 'Online'],
+    intakes: ['Fall 2026', 'Spring 2027'],
+    courses: ['BSc Computer Engineering', 'BSc Nursing', 'MSc Software Engineering', 'MBA'],
+  },
+];
 
 function seed() {
   const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number };
@@ -115,42 +157,26 @@ function seed() {
   const insertUni = db.prepare('INSERT INTO universities (name, country, city, created_at) VALUES (?, ?, ?, ?)');
   const insertCampus = db.prepare('INSERT INTO campuses (university_id, name) VALUES (?, ?)');
   const insertIntake = db.prepare('INSERT INTO intakes (university_id, label) VALUES (?, ?)');
+  const insertCourse = db.prepare('INSERT INTO courses (university_id, name) VALUES (?, ?)');
 
-  const unis: Array<{ name: string; country: string; city: string; campuses: string[]; intakes: string[] }> = [
-    {
-      name: 'University of Toronto', country: 'Canada', city: 'Toronto',
-      campuses: ['St. George Campus', 'Mississauga Campus', 'Scarborough Campus'],
-      intakes: ['Fall 2026', 'Winter 2027'],
-    },
-    {
-      name: 'University of Melbourne', country: 'Australia', city: 'Melbourne',
-      campuses: ['Parkville Campus', 'Southbank Campus'],
-      intakes: ['July 2026', 'February 2027'],
-    },
-    {
-      name: 'University of Manchester', country: 'United Kingdom', city: 'Manchester',
-      campuses: ['Main Campus'],
-      intakes: ['September 2026', 'January 2027'],
-    },
-    {
-      name: 'Arizona State University', country: 'United States', city: 'Tempe',
-      campuses: ['Tempe Campus', 'Downtown Phoenix Campus', 'Online'],
-      intakes: ['Fall 2026', 'Spring 2027'],
-    },
-  ];
+  const unis = SAMPLE_UNIVERSITIES;
 
-  const uniData: Array<{ id: number; campusIds: number[]; intakeIds: number[] }> = [];
+  const uniData: Array<{ id: number; campusIds: number[]; intakeIds: number[]; courseIds: Record<string, number> }> = [];
   for (const u of unis) {
     const uid = insertUni.run(u.name, u.country, u.city, now()).lastInsertRowid as number;
     const campusIds = u.campuses.map((c) => insertCampus.run(uid, c).lastInsertRowid as number);
     const intakeIds = u.intakes.map((i) => insertIntake.run(uid, i).lastInsertRowid as number);
-    uniData.push({ id: uid, campusIds, intakeIds });
+    const courseIds: Record<string, number> = {};
+    u.courses.forEach((c) => {
+      courseIds[c] = insertCourse.run(uid, c).lastInsertRowid as number;
+    });
+    uniData.push({ id: uid, campusIds, intakeIds, courseIds });
   }
 
   const insertStudent = db.prepare(`
     INSERT INTO students (first_name, last_name, email, phone, country, program,
-      university_id, campus_id, intake_id, status_id, assigned_to, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      university_id, campus_id, intake_id, course_id, status_id, assigned_to, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertActivity = db.prepare(
     'INSERT INTO activities (student_id, user_id, type, content, created_at) VALUES (?, ?, ?, ?, ?)'
@@ -179,7 +205,8 @@ function seed() {
     const created = daysAgo(s.age);
     const studentId = insertStudent.run(
       s.first, s.last, s.email, s.phone, s.country, s.program,
-      u.id, u.campusIds[0], u.intakeIds[0], statusIds[s.status], s.assigned, created, created
+      u.id, u.campusIds[0], u.intakeIds[0], u.courseIds[s.program] ?? null,
+      statusIds[s.status], s.assigned, created, created
     ).lastInsertRowid as number;
     insertActivity.run(studentId, s.assigned, 'created', `Student profile created for ${s.first} ${s.last}`, created);
     if (s.status !== 'Pending') {
@@ -193,4 +220,32 @@ function seed() {
   console.log('Database seeded with demo accounts and sample data.');
 }
 
+// Backfill for databases created before the courses feature: give each existing
+// university its sample course list (or a generic one) and link students whose
+// program text matches a course name.
+function ensureCourses() {
+  const courseCount = (db.prepare('SELECT COUNT(*) AS c FROM courses').get() as { c: number }).c;
+  const uniCount = (db.prepare('SELECT COUNT(*) AS c FROM universities').get() as { c: number }).c;
+  if (courseCount > 0 || uniCount === 0) return;
+
+  const genericCourses = ['BBA', 'MBA', 'BSc Computer Science', 'MSc Computer Science', 'MSc Data Science'];
+  const insertCourse = db.prepare('INSERT INTO courses (university_id, name) VALUES (?, ?)');
+  const unis = db.prepare('SELECT id, name FROM universities').all() as Array<{ id: number; name: string }>;
+  for (const uni of unis) {
+    const sample = SAMPLE_UNIVERSITIES.find((s) => s.name === uni.name);
+    for (const course of sample?.courses ?? genericCourses) {
+      insertCourse.run(uni.id, course);
+    }
+  }
+  db.exec(`
+    UPDATE students SET course_id = (
+      SELECT c.id FROM courses c
+      WHERE c.university_id = students.university_id AND c.name = students.program
+    )
+    WHERE course_id IS NULL
+  `);
+  console.log('Added course lists to existing universities.');
+}
+
 seed();
+ensureCourses();

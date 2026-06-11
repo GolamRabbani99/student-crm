@@ -25,7 +25,7 @@ A role-based CRM for student recruitment agencies. Admins manage universities (w
 
 - **Dashboard** — student totals, pipeline chart, monthly trend, top universities, recent activity.
 - **Students** — search and filter by status / university / counselor; click a row for full details, status changes, notes, and a complete timeline.
-- **Universities** — admin adds university name, country/city, campus locations, and intakes. These appear as dropdowns when adding a student.
+- **Universities** — admin adds university name, country/city, campus locations, intakes, and courses. These appear as dropdowns when adding a student (pick a university first, then its campuses, intakes, and courses).
 - **Statuses** — admin can rename, recolor, add, or remove pipeline stages.
 - **Team** — admin adds counselors or other admins.
 

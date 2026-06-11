@@ -119,6 +119,7 @@ export default function Layout() {
               className="rounded-md border border-blue-300 px-2.5 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
               onClick={() => {
                 localStorage.removeItem('crm_demo_db_v1');
+                localStorage.removeItem('crm_demo_db_v2');
                 window.location.reload();
               }}
             >

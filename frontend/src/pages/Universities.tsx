@@ -90,6 +90,15 @@ export default function Universities() {
                     ))}
                   </div>
                 </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Courses</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {u.courses.length === 0 && <span className="text-xs text-slate-400">None added</span>}
+                    {u.courses.map((c) => (
+                      <span key={c.id} className="rounded-md bg-emerald-50 px-2 py-1 text-xs text-emerald-700">{c.name}</span>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {isAdmin && (
@@ -189,6 +198,7 @@ function UniversityForm({
   const [city, setCity] = useState(university?.city ?? '');
   const [campuses, setCampuses] = useState<string[]>(university?.campuses.map((c) => c.name) ?? []);
   const [intakes, setIntakes] = useState<string[]>(university?.intakes.map((i) => i.label) ?? []);
+  const [courses, setCourses] = useState<string[]>(university?.courses.map((c) => c.name) ?? []);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -197,7 +207,7 @@ function UniversityForm({
     setError('');
     setBusy(true);
     try {
-      const payload = { name, country, city, campuses, intakes };
+      const payload = { name, country, city, campuses, intakes, courses };
       if (university) {
         await api(`/universities/${university.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       } else {
@@ -230,6 +240,7 @@ function UniversityForm({
         </div>
         <TagInput label="Campus locations" placeholder="e.g. Main Campus" values={campuses} onChange={setCampuses} />
         <TagInput label="Intakes" placeholder="e.g. Fall 2026" values={intakes} onChange={setIntakes} />
+        <TagInput label="Courses" placeholder="e.g. MSc Computer Science" values={courses} onChange={setCourses} />
         <div className="flex justify-end gap-3 pt-2">
           <button type="button" className={secondaryBtn} onClick={onClose}>Cancel</button>
           <button type="submit" className={primaryBtn} disabled={busy}>

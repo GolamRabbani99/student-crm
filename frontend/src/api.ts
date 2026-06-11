@@ -77,6 +77,12 @@ export interface Intake {
   label: string;
 }
 
+export interface Course {
+  id: number;
+  university_id: number;
+  name: string;
+}
+
 export interface University {
   id: number;
   name: string;
@@ -85,6 +91,7 @@ export interface University {
   student_count: number;
   campuses: Campus[];
   intakes: Intake[];
+  courses: Course[];
 }
 
 export interface Student {
@@ -98,6 +105,7 @@ export interface Student {
   university_id?: number | null;
   campus_id?: number | null;
   intake_id?: number | null;
+  course_id?: number | null;
   status_id?: number | null;
   assigned_to?: number | null;
   created_at: string;
@@ -105,6 +113,7 @@ export interface Student {
   university_name?: string | null;
   campus_name?: string | null;
   intake_label?: string | null;
+  course_name?: string | null;
   status_name?: string | null;
   status_color?: string | null;
   assigned_name?: string | null;
